@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>青蛙主題庫</title>
+<style>
+  :root {
+    --bg: #f7f1e6;
+    --card-bg: #fffaf0;
+    --text: #3a332a;
+    --text-soft: #7a7062;
+    --accent: #c98a4b;
+    --accent-soft: #e8d4b8;
+    --border: #e6dcc8;
+    --shadow: rgba(90, 70, 40, 0.08);
+    --btn-bg: #fff;
+    --btn-text: #3a332a;
+    --danger: #b9694a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #221d17;
+      --card-bg: #2c2620;
+      --text: #ece4d6;
+      --text-soft: #b3a894;
+      --accent: #e0a468;
+      --accent-soft: #4a3f2f;
+      --border: #3d352a;
+      --shadow: rgba(0, 0, 0, 0.3);
+      --btn-bg: #3a332a;
+      --btn-text: #ece4d6;
+      --danger: #d98868;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px 16px 64px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  header { text-align: center; margin-bottom: 28px; }
+  header h1 { font-size: 1.6rem; margin: 0 0 6px; letter-spacing: 0.05em; }
+  header .meta { color: var(--text-soft); font-size: 0.9rem; }
+  .empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-soft);
+    background: var(--card-bg);
+    border-radius: 16px;
+    border: 1px solid var(--border);
+  }
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 20px 20px 18px;
+    margin-bottom: 18px;
+    box-shadow: 0 2px 10px var(--shadow);
+  }
+  .card h2 { margin: 0 0 8px; font-size: 1.15rem; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .tag {
+    font-size: 0.75rem;
+    background: var(--accent-soft);
+    color: var(--text);
+    padding: 3px 10px;
+    border-radius: 999px;
+  }
+  .hook { color: var(--text-soft); font-size: 0.92rem; margin-bottom: 14px; }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+  button {
+    font-family: inherit;
+    font-size: 0.9rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    padding: 9px 16px;
+    background: var(--btn-bg);
+    color: var(--btn-text);
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+  }
+  button:hover { opacity: 0.8; }
+  button:disabled { cursor: default; opacity: 0.5; }
+  .btn-remove { color: var(--danger); border-color: var(--danger); }
+  .readonly-note {
+    font-size: 0.8rem;
+    color: var(--text-soft);
+    padding: 9px 4px;
+  }
+  .expand-panel {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px dashed var(--border);
+  }
+  .slide-nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .slide-dot {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--btn-bg);
+    color: var(--btn-text);
+    padding: 0;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .slide-dot.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+  .slide-label {
+    font-size: 0.8rem;
+    color: var(--text-soft);
+    margin-bottom: 10px;
+  }
+  .copy-btn {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+  .slide-content {
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-size: 0.85rem;
+    max-height: 340px;
+    overflow-y: auto;
+    margin: 0;
+  }
+  footer {
+    text-align: center;
+    color: var(--text-soft);
+    font-size: 0.78rem;
+    margin-top: 32px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>青蛙主題庫</h1>
+    <div class="meta" id="meta">載入中…</div>
+  </header>
+  <div id="list"></div>
+  <footer>每個主題含 6 張完整生圖指令，複製後直接貼給 ChatGPT。</footer>
+</div>
+
+<script>
+// ============ 設定區：換 repo 時只需要改這裡 ============
+const CONFIG = {
+  OWNER: "mikexin250484-commits",
+  REPO: "frog-topic-library",
+  WORKFLOW_FILE: "remove-topic.yml",
+  // 只給 Actions:write 權限的窄權限 fine-grained token；留空則視為唯讀模式。
+  DISPATCH_TOKEN: "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"
+};
+// =========================================================
+
+const state = { data: null, expanded: {}, slideIndex: {} };
+
+function hasWriteAccess() {
+  return !!CONFIG.DISPATCH_TOKEN;
+}
+
+async function loadTopics() {
+  try {
+    const res = await fetch('topics.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error('fetch failed: ' + res.status);
+    state.data = await res.json();
+  } catch (err) {
+    document.getElementById('meta').textContent = '讀取 topics.json 失敗';
+    document.getElementById('list').innerHTML =
+      '<div class="empty">無法載入主題資料，請確認 topics.json 存在且可讀取。</div>';
+    return;
+  }
+  render();
+}
+
+function render() {
+  const { updatedAt, topics } = state.data;
+  document.getElementById('meta').textContent =
+    `更新日期：${updatedAt}｜目前庫存：${topics.length}／7`;
+
+  const listEl = document.getElementById('list');
+  if (!topics.length) {
+    listEl.innerHTML = '<div class="empty">目前庫存是空的，等待補新主題。</div>';
+    return;
+  }
+
+  listEl.innerHTML = topics.map(topicCardHTML).join('');
+
+  topics.forEach(t => {
+    const expandBtn = document.getElementById(`expand-${t.id}`);
+    if (expandBtn) expandBtn.addEventListener('click', () => toggleExpand(t.id));
+
+    const removeBtn = document.getElementById(`remove-${t.id}`);
+    if (removeBtn) removeBtn.addEventListener('click', () => removeTopic(t.id, t.title));
+
+    if (state.expanded[t.id]) {
+      bindSlidePanel(t);
+    }
+  });
+}
+
+function topicCardHTML(t) {
+  const tags = [...t.domains, t.format, `加入 ${t.addedDate}`]
+    .map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join('');
+
+  const removeControl = hasWriteAccess()
+    ? `<button class="btn-remove" id="remove-${t.id}">已選用，從庫存移除</button>`
+    : `<span class="readonly-note">唯讀模式：無法從這裡移除</span>`;
+
+  const expanded = state.expanded[t.id];
+
+  return `
+    <div class="card" data-id="${t.id}">
+      <h2>${escapeHtml(t.title)}</h2>
+      <div class="tags">${tags}</div>
+      <div class="hook">${escapeHtml(t.hook)}</div>
+      <div class="actions">
+        <button id="expand-${t.id}">${expanded ? '收合' : '展開，看六張要貼什麼'}</button>
+        ${removeControl}
+      </div>
+      ${expanded ? slidePanelHTML(t) : ''}
+    </div>
+  `;
+}
+
+function slidePanelHTML(t) {
+  const idx = state.slideIndex[t.id] || 0;
+  const dots = t.slides.map((_, i) =>
+    `<button class="slide-dot${i === idx ? ' active' : ''}" data-idx="${i}">${i + 1}</button>`
+  ).join('');
+
+  return `
+    <div class="expand-panel" id="panel-${t.id}">
+      <div class="slide-nav">${dots}</div>
+      <div class="slide-label" id="label-${t.id}">第${idx + 1}／${t.slides.length}張</div>
+      <button class="copy-btn" id="copy-${t.id}">複製這一張，貼給 ChatGPT</button>
+      <pre class="slide-content" id="content-${t.id}">${escapeHtml(t.slides[idx])}</pre>
+    </div>
+  `;
+}
+
+function toggleExpand(id) {
+  state.expanded[id] = !state.expanded[id];
+  if (state.expanded[id] && state.slideIndex[id] === undefined) {
+    state.slideIndex[id] = 0;
+  }
+  render();
+}
+
+function bindSlidePanel(t) {
+  const panel = document.getElementById(`panel-${t.id}`);
+  if (!panel) return;
+
+  panel.querySelectorAll('.slide-dot').forEach(dot => {
+    dot.addEventListener('click', () => {
+      const i = parseInt(dot.dataset.idx, 10);
+      state.slideIndex[t.id] = i;
+      updateSlideView(t);
+    });
+  });
+
+  const copyBtn = document.getElementById(`copy-${t.id}`);
+  copyBtn.addEventListener('click', () => copySlide(t, copyBtn));
+}
+
+function updateSlideView(t) {
+  const idx = state.slideIndex[t.id] || 0;
+  document.getElementById(`label-${t.id}`).textContent = `第${idx + 1}／${t.slides.length}張`;
+  document.getElementById(`content-${t.id}`).textContent = t.slides[idx];
+
+  const panel = document.getElementById(`panel-${t.id}`);
+  panel.querySelectorAll('.slide-dot').forEach((dot, i) => {
+    dot.classList.toggle('active', i === idx);
+  });
+}
+
+async function copySlide(t, btn) {
+  const idx = state.slideIndex[t.id] || 0;
+  const text = t.slides[idx];
+  const original = btn.textContent;
+
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      fallbackCopy(text);
+    }
+    btn.textContent = '已複製';
+  } catch (err) {
+    try {
+      fallbackCopy(text);
+      btn.textContent = '已複製';
+    } catch (err2) {
+      btn.textContent = '複製失敗，請手動選取';
+    }
+  }
+  setTimeout(() => { btn.textContent = original; }, 1500);
+}
+
+function fallbackCopy(text) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.focus();
+  ta.select();
+  document.execCommand('copy');
+  document.body.removeChild(ta);
+}
+
+async function removeTopic(id, title) {
+  const btn = document.getElementById(`remove-${id}`);
+  if (!btn) return;
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '移除中…';
+
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${CONFIG.OWNER}/${CONFIG.REPO}/actions/workflows/${CONFIG.WORKFLOW_FILE}/dispatches`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${CONFIG.DISPATCH_TOKEN}`,
+          'Accept': 'application/vnd.github+json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ ref: 'main', inputs: { topic_id: id } })
+      }
+    );
+    if (!res.ok) throw new Error('dispatch failed: ' + res.status);
+
+    // 從畫面上立即移除（GitHub Action 會非同步更新 topics.json）
+    state.data.topics = state.data.topics.filter(t => t.id !== id);
+    delete state.expanded[id];
+    delete state.slideIndex[id];
+    render();
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = original;
+    alert(`移除失敗，請稍後再試或手動處理。\n（${err.message}）`);
+  }
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+loadTopics();
+</script>
+</body>
+</html>

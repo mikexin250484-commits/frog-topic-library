@@ -1,0 +1,64 @@
+name: Remove topic from library
+
+on:
+  workflow_dispatch:
+    inputs:
+      topic_id:
+        description: "要從 topics.json 移除的主題 id（例如 t-2026-08-26-01）"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  remove-topic:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Remove topic from topics.json
+        env:
+          TOPIC_ID: ${{ inputs.topic_id }}
+        run: |
+          python3 - <<'PYEOF'
+          import json
+          import os
+          import sys
+
+          topic_id = os.environ["TOPIC_ID"]
+          path = "topics.json"
+
+          with open(path, "r", encoding="utf-8") as f:
+              data = json.load(f)
+
+          before = len(data["topics"])
+          data["topics"] = [t for t in data["topics"] if t["id"] != topic_id]
+          after = len(data["topics"])
+
+          if before == after:
+              print(f"::warning::topic_id '{topic_id}' 不存在於 topics.json，未做任何變更")
+              sys.exit(0)
+
+          import datetime
+          data["updatedAt"] = datetime.date.today().isoformat()
+
+          with open(path, "w", encoding="utf-8") as f:
+              json.dump(data, f, ensure_ascii=False, indent=2)
+              f.write("\n")
+
+          print(f"已移除 {topic_id}，剩餘 {after} 個主題")
+          PYEOF
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- topics.json; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git add topics.json
+          git commit -m "Remove topic: ${{ inputs.topic_id }}"
+          git push

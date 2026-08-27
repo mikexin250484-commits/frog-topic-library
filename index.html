@@ -153,6 +153,9 @@
   <header>
     <h1>青蛙主題庫</h1>
     <div class="meta" id="meta">載入中…</div>
+    <div style="margin-top:10px;">
+      <button id="token-setting-btn" style="font-size:0.78rem; padding:5px 12px;"></button>
+    </div>
   </header>
   <div id="list"></div>
   <footer>每個主題含 6 張完整生圖指令，複製後直接貼給 ChatGPT。</footer>
@@ -163,16 +166,39 @@
 const CONFIG = {
   OWNER: "mikexin250484-commits",
   REPO: "frog-topic-library",
-  WORKFLOW_FILE: "remove-topic.yml",
-  // 只給 Actions:write 權限的窄權限 fine-grained token；留空則視為唯讀模式。
-  DISPATCH_TOKEN: "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"
+  WORKFLOW_FILE: "remove-topic.yml"
+  // 注意：dispatch token 不放在這裡（也不可以放進任何會被 commit 的檔案）。
+  // GitHub 只要偵測到公開 repo 裡有真實的 GitHub token 就會自動撤銷，就算手動放行 push protection 也一樣。
+  // token 改成由使用者在瀏覽器裡輸入一次，存在該瀏覽器自己的 localStorage，永遠不會進 git。
 };
 // =========================================================
 
+const TOKEN_KEY = 'frog_topic_library_dispatch_token';
+
 const state = { data: null, expanded: {}, slideIndex: {} };
 
+function getDispatchToken() {
+  try {
+    return localStorage.getItem(TOKEN_KEY) || '';
+  } catch (err) {
+    return '';
+  }
+}
+
+function setDispatchToken(token) {
+  try {
+    if (token) {
+      localStorage.setItem(TOKEN_KEY, token);
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+    }
+  } catch (err) {
+    // localStorage 不可用時靜默失敗，畫面仍以唯讀模式呈現
+  }
+}
+
 function hasWriteAccess() {
-  return !!CONFIG.DISPATCH_TOKEN;
+  return !!getDispatchToken();
 }
 
 async function loadTopics() {
@@ -187,6 +213,26 @@ async function loadTopics() {
     return;
   }
   render();
+  renderTokenSettingBtn();
+}
+
+function renderTokenSettingBtn() {
+  const btn = document.getElementById('token-setting-btn');
+  if (!btn) return;
+  btn.textContent = hasWriteAccess() ? '已設定移除權限 token（點此更換／清除）' : '設定移除權限 token';
+  btn.onclick = () => {
+    const current = getDispatchToken();
+    const input = window.prompt(
+      '貼上只有 Actions 讀寫權限的 GitHub fine-grained token（用於「已選用，從庫存移除」）。\n' +
+      '這組 token 只會存在這個瀏覽器裡，不會被上傳或公開。\n' +
+      '留空並確定＝清除已存的 token。',
+      current
+    );
+    if (input === null) return; // 使用者按取消
+    setDispatchToken(input.trim());
+    render();
+    renderTokenSettingBtn();
+  };
 }
 
 function render() {
@@ -328,6 +374,11 @@ function fallbackCopy(text) {
 async function removeTopic(id, title) {
   const btn = document.getElementById(`remove-${id}`);
   if (!btn) return;
+  const token = getDispatchToken();
+  if (!token) {
+    alert('尚未設定移除權限的 token，請先點上方「設定移除權限 token」。');
+    return;
+  }
   const original = btn.textContent;
   btn.disabled = true;
   btn.textContent = '移除中…';
@@ -338,14 +389,19 @@ async function removeTopic(id, title) {
       {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${CONFIG.DISPATCH_TOKEN}`,
+          'Authorization': `Bearer ${token}`,
           'Accept': 'application/vnd.github+json',
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ ref: 'main', inputs: { topic_id: id } })
       }
     );
-    if (!res.ok) throw new Error('dispatch failed: ' + res.status);
+    if (!res.ok) {
+      if (res.status === 401 || res.status === 403) {
+        throw new Error(`token 無效或已過期（HTTP ${res.status}），請重新設定移除權限 token`);
+      }
+      throw new Error('dispatch failed: ' + res.status);
+    }
 
     // 從畫面上立即移除（GitHub Action 會非同步更新 topics.json）
     state.data.topics = state.data.topics.filter(t => t.id !== id);

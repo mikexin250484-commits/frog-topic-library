@@ -282,7 +282,7 @@ function topicCardHTML(t) {
       <div class="hook">${escapeHtml(t.hook)}</div>
       <div class="actions">
         <button id="expand-${t.id}">${expanded ? '收合' : '展開，看六張要貼什麼'}</button>
-        <button class="btn-discuss" id="discuss-${t.id}">複製整篇，跟 GPT 討論優化</button>
+        <button class="btn-discuss" id="discuss-${t.id}">複製主題大綱＋六張文字，跟 GPT 討論優化</button>
         ${removeControl}
       </div>
       ${expanded ? slidePanelHTML(t) : ''}
@@ -364,21 +364,37 @@ async function copySlide(t, btn) {
   setTimeout(() => { btn.textContent = original; }, 1500);
 }
 
+function extractField(slideText, label) {
+  const m = slideText.match(new RegExp(label + '：([^\\n]*)'));
+  return m ? m[1].trim() : '';
+}
+
 function buildDiscussionText(t) {
+  const seriesNote = extractField(t.slides[0], '系列說明');
+
   const header =
-`我想跟你討論、優化這個 IG 圖文主題的整體內容與六張的敘事安排，幫我一起看有沒有可以調整得更好的地方（文案、畫面選擇、上下對比或六張之間的節奏邏輯都可以提出建議），討論定案後我會再自己整理成最終指令。
+`我想跟你討論、優化這個 IG 圖文主題的文案內容，先不用管生圖的細節（畫面、角色、鏡頭、材質這些都先不用談），幫我看看主題方向、大綱鋪陳、六張的文字有沒有可以調整得更好的地方。
 
 【主題】${t.title}
 【一句話】${t.hook}
-【領域】${t.domains.join('、')}
-【格式】${t.format}
-【共 ${t.slides.length} 張，以下附上目前每一張的完整內容】`;
+【領域】${t.domains.join('、')}｜【格式】${t.format}` +
+    (seriesNote ? `\n【系列安排】${seriesNote}` : '');
 
-  const body = t.slides
-    .map((s, i) => `\n\n──── 第 ${i + 1}／${t.slides.length} 張 ────\n${s}`)
-    .join('');
+  const outline = t.slides
+    .map((s, i) => `第${i + 1}張：${extractField(s, '本張目的')}`)
+    .join('\n');
 
-  return header + body;
+  const texts = t.slides
+    .map((s, i) => `第${i + 1}張：${extractField(s, '圖片文字')}`)
+    .join('\n');
+
+  return `${header}
+
+【六張大綱】
+${outline}
+
+【六張文字】
+${texts}`;
 }
 
 async function copyWholeTopic(t, btn) {

@@ -87,6 +87,7 @@
   button:hover { opacity: 0.8; }
   button:disabled { cursor: default; opacity: 0.5; }
   .btn-remove { color: var(--danger); border-color: var(--danger); }
+  .btn-discuss { color: var(--accent); border-color: var(--accent); }
   .readonly-note {
     font-size: 0.8rem;
     color: var(--text-soft);
@@ -255,6 +256,9 @@ function render() {
     const removeBtn = document.getElementById(`remove-${t.id}`);
     if (removeBtn) removeBtn.addEventListener('click', () => removeTopic(t.id, t.title));
 
+    const discussBtn = document.getElementById(`discuss-${t.id}`);
+    if (discussBtn) discussBtn.addEventListener('click', () => copyWholeTopic(t, discussBtn));
+
     if (state.expanded[t.id]) {
       bindSlidePanel(t);
     }
@@ -278,6 +282,7 @@ function topicCardHTML(t) {
       <div class="hook">${escapeHtml(t.hook)}</div>
       <div class="actions">
         <button id="expand-${t.id}">${expanded ? '收合' : '展開，看六張要貼什麼'}</button>
+        <button class="btn-discuss" id="discuss-${t.id}">複製整篇，跟 GPT 討論優化</button>
         ${removeControl}
       </div>
       ${expanded ? slidePanelHTML(t) : ''}
@@ -339,6 +344,45 @@ function updateSlideView(t) {
 async function copySlide(t, btn) {
   const idx = state.slideIndex[t.id] || 0;
   const text = t.slides[idx];
+  const original = btn.textContent;
+
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      fallbackCopy(text);
+    }
+    btn.textContent = '已複製';
+  } catch (err) {
+    try {
+      fallbackCopy(text);
+      btn.textContent = '已複製';
+    } catch (err2) {
+      btn.textContent = '複製失敗，請手動選取';
+    }
+  }
+  setTimeout(() => { btn.textContent = original; }, 1500);
+}
+
+function buildDiscussionText(t) {
+  const header =
+`我想跟你討論、優化這個 IG 圖文主題的整體內容與六張的敘事安排，幫我一起看有沒有可以調整得更好的地方（文案、畫面選擇、上下對比或六張之間的節奏邏輯都可以提出建議），討論定案後我會再自己整理成最終指令。
+
+【主題】${t.title}
+【一句話】${t.hook}
+【領域】${t.domains.join('、')}
+【格式】${t.format}
+【共 ${t.slides.length} 張，以下附上目前每一張的完整內容】`;
+
+  const body = t.slides
+    .map((s, i) => `\n\n──── 第 ${i + 1}／${t.slides.length} 張 ────\n${s}`)
+    .join('');
+
+  return header + body;
+}
+
+async function copyWholeTopic(t, btn) {
+  const text = buildDiscussionText(t);
   const original = btn.textContent;
 
   try {

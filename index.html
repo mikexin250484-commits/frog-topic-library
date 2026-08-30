@@ -17,6 +17,8 @@
     --btn-bg: #fff;
     --btn-text: #3a332a;
     --danger: #b9694a;
+    --concept: #5f8d5a;
+    --concept-bg: #eef3ea;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -31,6 +33,8 @@
       --btn-bg: #3a332a;
       --btn-text: #ece4d6;
       --danger: #d98868;
+      --concept: #8fc98a;
+      --concept-bg: #2a3327;
     }
   }
   * { box-sizing: border-box; }
@@ -88,6 +92,7 @@
   button:disabled { cursor: default; opacity: 0.5; }
   .btn-remove { color: var(--danger); border-color: var(--danger); }
   .btn-discuss { color: var(--accent); border-color: var(--accent); }
+  .btn-concept { color: var(--concept); border-color: var(--concept); }
   .readonly-note {
     font-size: 0.8rem;
     color: var(--text-soft);
@@ -141,6 +146,29 @@
     overflow-y: auto;
     margin: 0;
   }
+  .concept-panel {
+    margin-top: 16px;
+    padding: 14px 16px;
+    border-radius: 12px;
+    background: var(--concept-bg);
+  }
+  .concept-block { margin-bottom: 12px; }
+  .concept-block:last-of-type { margin-bottom: 14px; }
+  .concept-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--concept);
+    margin-bottom: 4px;
+  }
+  .concept-text { margin: 0; font-size: 0.9rem; line-height: 1.7; }
+  .concept-list { margin: 0; padding-left: 1.2em; font-size: 0.88rem; line-height: 1.7; }
+  .concept-list li { margin-bottom: 4px; }
+  .btn-copy-concept {
+    color: var(--concept);
+    border-color: var(--concept);
+    font-size: 0.82rem;
+    padding: 7px 14px;
+  }
   footer {
     text-align: center;
     color: var(--text-soft);
@@ -159,7 +187,7 @@
     </div>
   </header>
   <div id="list"></div>
-  <footer>每個主題含 6 張完整生圖指令，複製後直接貼給 ChatGPT。</footer>
+  <footer>每個主題含主題概念、生活例子與 6 張完整生圖指令，複製後直接貼給 ChatGPT。</footer>
 </div>
 
 <script>
@@ -176,7 +204,7 @@ const CONFIG = {
 
 const TOKEN_KEY = 'frog_topic_library_dispatch_token';
 
-const state = { data: null, expanded: {}, slideIndex: {} };
+const state = { data: null, expanded: {}, slideIndex: {}, conceptExpanded: {} };
 
 function getDispatchToken() {
   try {
@@ -259,8 +287,14 @@ function render() {
     const discussBtn = document.getElementById(`discuss-${t.id}`);
     if (discussBtn) discussBtn.addEventListener('click', () => copyWholeTopic(t, discussBtn));
 
+    const conceptBtn = document.getElementById(`concept-${t.id}`);
+    if (conceptBtn) conceptBtn.addEventListener('click', () => toggleConcept(t.id));
+
     if (state.expanded[t.id]) {
       bindSlidePanel(t);
+    }
+    if (state.conceptExpanded[t.id]) {
+      bindConceptPanel(t);
     }
   });
 }
@@ -274,6 +308,11 @@ function topicCardHTML(t) {
     : `<span class="readonly-note">唯讀模式：無法從這裡移除</span>`;
 
   const expanded = state.expanded[t.id];
+  const conceptExpanded = state.conceptExpanded[t.id];
+
+  const conceptControl = t.concept
+    ? `<button class="btn-concept" id="concept-${t.id}">${conceptExpanded ? '收合主題概念' : '看主題概念與例子，先想想'}</button>`
+    : '';
 
   return `
     <div class="card" data-id="${t.id}">
@@ -281,13 +320,86 @@ function topicCardHTML(t) {
       <div class="tags">${tags}</div>
       <div class="hook">${escapeHtml(t.hook)}</div>
       <div class="actions">
+        ${conceptControl}
         <button id="expand-${t.id}">${expanded ? '收合' : '展開，看六張要貼什麼'}</button>
         <button class="btn-discuss" id="discuss-${t.id}">複製主題大綱＋六張文字，跟 GPT 討論優化</button>
         ${removeControl}
       </div>
+      ${conceptExpanded ? conceptPanelHTML(t) : ''}
       ${expanded ? slidePanelHTML(t) : ''}
     </div>
   `;
+}
+
+function conceptPanelHTML(t) {
+  const c = t.concept;
+  if (!c) return '';
+  const examplesHtml = (c.examples || []).map(e => `<li>${escapeHtml(e)}</li>`).join('');
+  const promptsHtml = (c.reflectionPrompts || []).map(p => `<li>${escapeHtml(p)}</li>`).join('');
+
+  return `
+    <div class="concept-panel" id="concept-panel-${t.id}">
+      <div class="concept-block">
+        <div class="concept-label">核心概念</div>
+        <p class="concept-text">${escapeHtml(c.coreIdea)}</p>
+      </div>
+      ${examplesHtml ? `<div class="concept-block">
+        <div class="concept-label">生活中的例子</div>
+        <ul class="concept-list">${examplesHtml}</ul>
+      </div>` : ''}
+      ${promptsHtml ? `<div class="concept-block">
+        <div class="concept-label">可以想想</div>
+        <ul class="concept-list">${promptsHtml}</ul>
+      </div>` : ''}
+      <button class="btn-concept btn-copy-concept" id="copy-concept-${t.id}">複製這段概念與例子</button>
+    </div>
+  `;
+}
+
+function toggleConcept(id) {
+  state.conceptExpanded[id] = !state.conceptExpanded[id];
+  render();
+}
+
+function bindConceptPanel(t) {
+  const btn = document.getElementById(`copy-concept-${t.id}`);
+  if (!btn) return;
+  btn.addEventListener('click', () => copyConcept(t, btn));
+}
+
+function buildConceptText(t) {
+  const c = t.concept;
+  if (!c) return '';
+  let text = `【${t.title}】\n\n核心概念：\n${c.coreIdea}`;
+  if (c.examples && c.examples.length) {
+    text += `\n\n生活中的例子：\n` + c.examples.map(e => `・${e}`).join('\n');
+  }
+  if (c.reflectionPrompts && c.reflectionPrompts.length) {
+    text += `\n\n可以想想：\n` + c.reflectionPrompts.map(p => `・${p}`).join('\n');
+  }
+  return text;
+}
+
+async function copyConcept(t, btn) {
+  const text = buildConceptText(t);
+  const original = btn.textContent;
+
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      fallbackCopy(text);
+    }
+    btn.textContent = '已複製';
+  } catch (err) {
+    try {
+      fallbackCopy(text);
+      btn.textContent = '已複製';
+    } catch (err2) {
+      btn.textContent = '複製失敗，請手動選取';
+    }
+  }
+  setTimeout(() => { btn.textContent = original; }, 1500);
 }
 
 function slidePanelHTML(t) {
@@ -378,6 +490,7 @@ function buildDiscussionText(t) {
 【主題】${t.title}
 【一句話】${t.hook}
 【領域】${t.domains.join('、')}｜【格式】${t.format}` +
+    (t.concept && t.concept.coreIdea ? `\n【核心概念】${t.concept.coreIdea}` : '') +
     (seriesNote ? `\n【系列安排】${seriesNote}` : '');
 
   const outline = t.slides
